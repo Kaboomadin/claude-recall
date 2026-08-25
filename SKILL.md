@@ -89,6 +89,11 @@ python <skill-dir>/scripts/recall.py extract "<file>" --out "<scratch>/<sessionI
 - Use `--grep <term>` whenever the question has a distinctive term. It keeps matching turns plus one
   turn of context either side, and it is the difference between a 200KB read and a 5KB one.
 - Add `--include-sidechains` only if the answer plausibly came from a subagent's work.
+- Add `--include-tools` when the question is about something DONE rather than said: a command
+  that was run, a file that was read or written, a URL that was fetched. Those live in tool
+  blocks, and the default extract drops them, so without this flag such a question returns a
+  miss no matter how many times it is asked. Tool lines are clipped to 400 characters, and the
+  window centres on your `--grep` term so a match deep inside a long result still survives.
 - Big extracts: grep or offset-read the extract file. Do not swallow a 200KB extract whole.
 
 **4. Answer with a citation.** Required, every time, no exceptions:
@@ -106,8 +111,10 @@ promotion is a separate human-triggered action.
 Say plainly that you did not find it. Never invent a recollection, and never soften a miss into a
 vague "we may have discussed". Then offer, in order:
 
-1. Ask the user for a rough date range and retry step 2 with it.
-2. One corpus-wide pass for a distinctive keyword (needs ripgrep; a few seconds over 581MB):
+1. If the question is about a command run, a file touched, or a URL fetched, retry step 3 with
+   `--include-tools` before anything else. The default extract is blind to all of it.
+2. Ask the user for a rough date range and retry step 2 with it.
+3. One corpus-wide pass for a distinctive keyword (needs ripgrep; a few seconds over 581MB):
 
 ```
 rg -l "<term>" ~/.claude/projects/<slug>/*.jsonl
@@ -118,3 +125,5 @@ rg -l "<term>" ~/.claude/projects/<slug>/*.jsonl
 - On demand only. No daemon, no scheduled task, no embeddings, no database, no network.
 - Cap at 3 candidate sessions per question.
 - Quote verbatim or report a miss. There is no third option.
+- A miss on a question older than the corpus is a CORPUS LIMIT, not an absence. Check the oldest
+  `firstTs` in the cache before concluding that something never happened.

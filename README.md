@@ -84,6 +84,9 @@ Three tiers, each only paying for what the question needs.
    range. This is a judgement step on purpose. There is no vector search and none is wanted.
 3. **Extract.** Pull *text only* out of the chosen transcripts. Tool payloads, inline base64 images
    and control blocks are dropped by construction, because the extractor only reads `text` blocks.
+   Pass `--include-tools` when you need the opposite: commands run, files touched, URLs fetched.
+   Those live in tool blocks, so the default is blind to them. Tool lines are clipped to 400
+   characters and the window centres on your `--grep` term, so the output stays small.
 
 Measured on a real 581MB / 72-session corpus:
 
@@ -93,10 +96,22 @@ Measured on a real 581MB / 72-session corpus:
 | Zero base64 runs, zero tool payloads | in the output |
 | `--grep` on that session | 446 turns down to 18 |
 | Smallest session | 1 turn, no crash |
+| 68.8MB session, default | 80KB (0.111%), 0.2s |
+| Same, `--include-tools` | 273KB (0.378%), 0.2s, no base64 |
 
 Subagent transcripts are not inline in the session file; they are sibling files under
 `<dir>/<sessionId>/subagents/agent-*.jsonl`. Without `--include-sidechains` that directory is never
 opened.
+
+## Two things it will not tell you
+
+**It only knows what is still on disk.** Claude Code's transcripts get pruned. Check the oldest
+`firstTs` in the cache before reading a miss as proof that something never happened; the answer may
+simply predate the corpus.
+
+**Without `--include-tools` it cannot see anything you did.** Commands, file reads and fetches live
+in tool blocks, which the default extract drops. "Did I ever run X" returns a miss every time until
+you pass the flag.
 
 ## Safety
 

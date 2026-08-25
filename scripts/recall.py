@@ -83,18 +83,103 @@ def is_noise_text(text: str) -> bool:
     return False
 
 
-def extract_text(content):
+# Per-block cap for tool text under --include-tools. Small on purpose: the point
+# is to answer "was this command run", which the first line answers, not to
+# reproduce the output. Without a cap one `cat` of a large file undoes the whole
+# size guarantee that makes this tool usable.
+MAX_TOOL_CHARS = 400
+
+# A long unbroken run of base64-ish characters. Tool blocks carry embedded images
+# and blobs; those are exactly what must never reach the output.
+_BASE64_RUN = re.compile(r"[A-Za-z0-9+/=]{200,}")
+
+
+def _clip(text, limit=MAX_TOOL_CHARS, focus=None):
+    """Collapse to one line, drop base64 runs, and keep a window of `limit`.
+
+    The window is CENTRED ON `focus` when that term appears. Clipping from the
+    start looks right and is useless: on the first attempt at this, the match
+    that justified the whole feature sat ~2KB into a file-read result, so a
+    head-truncation deleted the evidence and the search still returned nothing.
+    Truncate around what was asked for, not around the beginning.
+    """
+    if not isinstance(text, str):
+        return None
+    text = _BASE64_RUN.sub("<blob>", text)
+    text = " ".join(text.split())
+    if not text:
+        return None
+    if len(text) <= limit:
+        return text
+    start = 0
+    if focus:
+        hit = text.lower().find(focus.lower())
+        if hit >= 0:
+            start = max(0, hit - limit // 3)
+    window = text[start:start + limit]
+    return ("..." if start else "") + window + ("..." if start + limit < len(text) else "")
+
+
+def _tool_use_line(block, focus=None):
+    """One line naming the tool and the part of its input worth searching.
+
+    `command` is pulled out by name because "did I ever run X" is the question
+    this exists for, and for Bash the command IS the content. Other tools fall
+    back to their whole input, clipped.
+    """
+    name = block.get("name") or "tool"
+    inp = block.get("input")
+    detail = None
+    if isinstance(inp, dict):
+        for key in ("command", "file_path", "path", "pattern", "query", "url"):
+            if isinstance(inp.get(key), str):
+                detail = inp[key]
+                break
+        if detail is None:
+            detail = json.dumps(inp, ensure_ascii=False)
+    elif inp is not None:
+        detail = str(inp)
+    detail = _clip(detail, focus=focus)
+    return f"[tool: {name}] {detail}" if detail else f"[tool: {name}]"
+
+
+def extract_text(content, include_tools=False, focus=None):
     """Return plain text from a message.content value: plain string or a
-    list of typed blocks (only 'text' blocks contribute)."""
+    list of typed blocks.
+
+    By default ONLY 'text' blocks contribute. That is what keeps inline base64
+    images and tool payloads out, and it is why a 144.9MB session extracts to
+    194KB.
+
+    With include_tools=True, 'tool_use' and 'tool_result' blocks are summarised
+    into one clipped line each. This exists because the default is blind to a
+    whole class of question: a command you RAN lives in a tool block, not in
+    conversation text, so "did I ever run X" could not be answered at all.
+    Clipped and base64-stripped so the size guarantee still roughly holds.
+    """
     if isinstance(content, str):
         return content
     if isinstance(content, list):
         parts = []
         for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
+            if not isinstance(block, dict):
+                continue
+            btype = block.get("type")
+            if btype == "text":
                 t = block.get("text")
                 if isinstance(t, str):
                     parts.append(t)
+            elif include_tools and btype == "tool_use":
+                parts.append(_tool_use_line(block, focus=focus))
+            elif include_tools and btype == "tool_result":
+                inner = block.get("content")
+                if isinstance(inner, list):
+                    inner = "\n".join(
+                        b.get("text", "") for b in inner
+                        if isinstance(b, dict) and b.get("type") == "text")
+                line = _clip(inner if isinstance(inner, str) else None, focus=focus)
+                if line:
+                    parts.append(f"[tool result] {line}")
         return "\n".join(parts) if parts else None
     return None
 
@@ -244,7 +329,7 @@ def cmd_index(args):
     return 0
 
 
-def collect_turns(path: Path, agent_id=None, skip_sidechain=True):
+def collect_turns(path: Path, agent_id=None, skip_sidechain=True, include_tools=False, focus=None):
     """Stream one transcript file and return a list of kept turns.
 
     A turn is {role, ts, uuid, agentId, text}. Kept: user/assistant records
@@ -280,7 +365,7 @@ def collect_turns(path: Path, agent_id=None, skip_sidechain=True):
                 message = obj.get("message")
                 if not isinstance(message, dict):
                     continue
-                text = extract_text(message.get("content"))
+                text = extract_text(message.get("content"), include_tools=include_tools, focus=focus)
                 if not text or is_noise_text(text):
                     continue
 
@@ -313,7 +398,8 @@ def cmd_extract(args):
         print(f"Session file not found: {path}", file=sys.stderr)
         return 1
 
-    turns = collect_turns(path, agent_id=None, skip_sidechain=True)
+    turns = collect_turns(path, agent_id=None, skip_sidechain=True,
+                          include_tools=args.include_tools, focus=args.grep)
     sidechain_count = 0
 
     if args.include_sidechains:
@@ -322,7 +408,8 @@ def cmd_extract(args):
         subagents_dir = path.parent / path.stem / "subagents"
         if subagents_dir.is_dir():
             for agent_path in sorted(subagents_dir.glob("agent-*.jsonl")):
-                agent_turns = collect_turns(agent_path, agent_id=agent_path.stem, skip_sidechain=False)
+                agent_turns = collect_turns(agent_path, agent_id=agent_path.stem, skip_sidechain=False,
+                                            include_tools=args.include_tools, focus=args.grep)
                 sidechain_count += len(agent_turns)
                 turns.extend(agent_turns)
 
@@ -365,6 +452,7 @@ def build_parser():
     extract_parser.add_argument("--out", default=None, help="Output file (default: stdout).")
     extract_parser.add_argument("--grep", default=None, help="Keep only turns matching this term (case-insensitive), plus 1 turn of context either side.")
     extract_parser.add_argument("--include-sidechains", action="store_true", help="Also merge subagent transcripts from <sessionId>/subagents/agent-*.jsonl.")
+    extract_parser.add_argument("--include-tools", action="store_true", help="Also include tool calls and results, one clipped line each. Needed to answer 'did I ever run X', which lives in a tool block, not conversation text.")
     extract_parser.set_defaults(func=cmd_extract)
 
     return parser
