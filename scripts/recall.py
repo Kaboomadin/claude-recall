@@ -459,6 +459,21 @@ def build_parser():
 
 
 def main(argv=None):
+    # Windows console encoding, fixed 2026-08-25 after a clean clone of the public
+    # repo crashed on the FIRST `extract` run against a real transcript:
+    #   UnicodeEncodeError: 'charmap' codec can't encode character '→'
+    # Python on Windows defaults stdout to the ANSI codepage (cp1252 here), and a
+    # Claude Code transcript is full of characters it cannot represent: arrows,
+    # dashes, box drawing, emoji. So `extract` to stdout, which is the tool's main
+    # path, died for every Windows user on any session containing one of them.
+    # The `--out` path never hit it because that already opens with encoding="utf-8".
+    # errors="replace" rather than "strict": a transcript is being read for its
+    # content, and losing one glyph to a placeholder beats losing the whole dump.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass  # already-wrapped or redirected stream: leave it alone
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)
