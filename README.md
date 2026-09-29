@@ -118,6 +118,13 @@ you pass the flag.
 Transcripts under `~/.claude/projects/` are treated as strictly read-only. The script never writes,
 renames, or moves anything there, and the skill instructs Claude not to either.
 
+## Related
+
+recall finds what a past session did. If you also want hooks that stop the current session from
+force-pushing, pushing to the branch that deploys, or committing a live API key, the same author
+sells the [Guardrails Kit for Claude Code](https://unstucked.dev/templates/claude-guardrails-kit/)
+(€5). More fixes from the same setup are at [unstucked.dev](https://unstucked.dev/fixes/).
+
 ## Licence
 
 MIT.
