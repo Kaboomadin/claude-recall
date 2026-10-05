@@ -1,0 +1,5 @@
+{
+  "name": "recall",
+  "description": "Find something discussed in a past Claude Code session and answer with a verbatim quote, its date and a resume pointer.",
+  "skills": "."
+}
