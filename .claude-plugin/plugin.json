@@ -1,5 +1,14 @@
 {
-  "name": "recall",
-  "description": "Find something discussed in a past Claude Code session and answer with a verbatim quote, its date and a resume pointer.",
+  "name": "session-recall",
+  "version": "1.0.0",
+  "description": "Searches your past Claude Code sessions for something that was said and answers with the exact quote, its date and a claude --resume command. It works only in Claude Code, because that is where the transcripts live.",
+  "author": {
+    "name": "Mike Bijlstra",
+    "url": "https://github.com/Kaboomadin"
+  },
+  "homepage": "https://github.com/Kaboomadin/claude-recall",
+  "repository": "https://github.com/Kaboomadin/claude-recall",
+  "license": "MIT",
+  "keywords": ["claude-code", "transcripts", "memory", "search", "sessions"],
   "skills": "."
 }
