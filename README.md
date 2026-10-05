@@ -118,6 +118,11 @@ you pass the flag.
 Transcripts under `~/.claude/projects/` are treated as strictly read-only. The script never writes,
 renames, or moves anything there, and the skill instructs Claude not to either.
 
+## Privacy
+
+Everything stays on your machine and nothing is sent anywhere. See [Privacy](PRIVACY.md) for exactly
+what it reads and stores.
+
 ## Related
 
 recall finds what a past session did. If you also want hooks that stop the current session from

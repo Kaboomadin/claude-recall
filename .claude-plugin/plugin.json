@@ -9,6 +9,13 @@
   "homepage": "https://github.com/Kaboomadin/claude-recall",
   "repository": "https://github.com/Kaboomadin/claude-recall",
   "license": "MIT",
-  "keywords": ["claude-code", "transcripts", "memory", "search", "sessions"],
+  "privacyPolicyUrl": "https://github.com/Kaboomadin/claude-recall/blob/main/PRIVACY.md",
+  "keywords": [
+    "claude-code",
+    "transcripts",
+    "memory",
+    "search",
+    "sessions"
+  ],
   "skills": "."
 }
